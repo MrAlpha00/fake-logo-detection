@@ -59,11 +59,14 @@ Preferred communication style: Simple, everyday language.
    - Output: 0-100 severity score with categorical interpretation (Low/Medium/High/Critical)
    - Breakdown dictionary for transparency
 
-4. **Tamper Detection Module** (`src/tamper.py`)
-   - Error Level Analysis (ELA) implementation via JPEG recompression
-   - Noise pattern analysis for inconsistency detection
-   - Clone region detection (simplified implementation)
-   - Suspiciousness scoring with visual ELA heatmaps
+4. **Tamper Detection Module** (`src/tamper.py` - **ENHANCED**)
+   - **EXIF Metadata Extraction**: Camera model, GPS location, software edits, timestamps
+   - **Tampering Indicator Analysis**: Detects editing software usage, timestamp mismatches, stripped metadata
+   - **Error Level Analysis (ELA)**: JPEG recompression artifact analysis with visual heatmaps
+   - **Clone Detection**: Feature matching to identify copy-pasted regions
+   - **Noise Pattern Analysis**: Inconsistency detection across image regions
+   - **GPS Coordinate Parsing**: Full GPS metadata extraction (latitude, longitude, altitude)
+   - **Forensic Timeline**: Camera capture vs digitization timestamp comparison
 
 5. **Explainability Module** (`src/explain.py`)
    - Grad-CAM (Gradient-weighted Class Activation Mapping) implementation

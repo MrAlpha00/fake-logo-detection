@@ -5,7 +5,9 @@ Detects image manipulation by analyzing JPEG compression artifacts.
 import cv2
 import numpy as np
 from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
 import io
+from datetime import datetime
 from src.utils import get_logger
 
 logger = get_logger(__name__)
@@ -171,3 +173,186 @@ def analyze_noise_patterns(image):
         'is_inconsistent': is_inconsistent,
         'regional_variances': [float(v) for v in variances]
     }
+
+
+def extract_exif_metadata(image_path_or_bytes):
+    """
+    Extract EXIF metadata from image for forensic analysis.
+    
+    Analyzes camera model, software edits, GPS location, timestamps, and other
+    metadata that can reveal image authenticity and manipulation history.
+    
+    Args:
+        image_path_or_bytes: File path or bytes buffer containing image
+    
+    Returns:
+        dict: {
+            'has_exif': bool,
+            'camera_make': str or None,
+            'camera_model': str or None,
+            'software': str or None (editing software used),
+            'datetime_original': str or None,
+            'datetime_digitized': str or None,
+            'gps_latitude': float or None,
+            'gps_longitude': float or None,
+            'gps_altitude': float or None,
+            'orientation': int or None,
+            'flash': str or None,
+            'focal_length': str or None,
+            'iso': int or None,
+            'exposure_time': str or None,
+            'f_number': str or None,
+            'tampering_indicators': list (signs of manipulation),
+            'metadata_warnings': list (suspicious metadata patterns)
+        }
+    """
+    try:
+        # Open image
+        if isinstance(image_path_or_bytes, (str, bytes)):
+            if isinstance(image_path_or_bytes, str):
+                img = Image.open(image_path_or_bytes)
+            else:
+                img = Image.open(io.BytesIO(image_path_or_bytes))
+        else:
+            # Assume it's already a PIL Image
+            img = image_path_or_bytes
+        
+        # Get EXIF data
+        exif_data = img._getexif() if hasattr(img, '_getexif') else None
+        
+        if not exif_data:
+            logger.info("No EXIF data found in image")
+            return {
+                'has_exif': False,
+                'tampering_indicators': ['No EXIF data - may have been stripped'],
+                'metadata_warnings': ['Missing metadata suggests possible editing']
+            }
+        
+        # Parse EXIF tags
+        exif = {}
+        for tag_id, value in exif_data.items():
+            tag = TAGS.get(tag_id, tag_id)
+            exif[tag] = value
+        
+        # Extract key fields
+        result = {
+            'has_exif': True,
+            'camera_make': exif.get('Make'),
+            'camera_model': exif.get('Model'),
+            'software': exif.get('Software'),
+            'datetime_original': exif.get('DateTimeOriginal'),
+            'datetime_digitized': exif.get('DateTimeDigitized'),
+            'orientation': exif.get('Orientation'),
+            'flash': exif.get('Flash'),
+            'focal_length': str(exif.get('FocalLength')) if exif.get('FocalLength') else None,
+            'iso': exif.get('ISOSpeedRatings'),
+            'exposure_time': str(exif.get('ExposureTime')) if exif.get('ExposureTime') else None,
+            'f_number': str(exif.get('FNumber')) if exif.get('FNumber') else None,
+            'gps_latitude': None,
+            'gps_longitude': None,
+            'gps_altitude': None,
+            'tampering_indicators': [],
+            'metadata_warnings': []
+        }
+        
+        # Extract GPS data if available
+        if 'GPSInfo' in exif:
+            gps_info = {}
+            for key in exif['GPSInfo'].keys():
+                decode = GPSTAGS.get(key, key)
+                gps_info[decode] = exif['GPSInfo'][key]
+            
+            # Parse GPS coordinates
+            if 'GPSLatitude' in gps_info and 'GPSLatitudeRef' in gps_info:
+                lat = gps_info['GPSLatitude']
+                lat_ref = gps_info['GPSLatitudeRef']
+                result['gps_latitude'] = convert_to_degrees(lat, lat_ref)
+            
+            if 'GPSLongitude' in gps_info and 'GPSLongitudeRef' in gps_info:
+                lon = gps_info['GPSLongitude']
+                lon_ref = gps_info['GPSLongitudeRef']
+                result['gps_longitude'] = convert_to_degrees(lon, lon_ref)
+            
+            if 'GPSAltitude' in gps_info:
+                result['gps_altitude'] = float(gps_info['GPSAltitude'])
+        
+        # Analyze for tampering indicators
+        if result['software']:
+            editing_software = ['photoshop', 'gimp', 'paint.net', 'lightroom', 
+                              'affinity', 'pixlr', 'canva', 'snapseed']
+            if any(sw in result['software'].lower() for sw in editing_software):
+                result['tampering_indicators'].append(
+                    f"Edited with {result['software']} - may have modifications"
+                )
+        
+        # Check for timestamp inconsistencies
+        if result['datetime_original'] and result['datetime_digitized']:
+            try:
+                dt_orig = datetime.strptime(result['datetime_original'], '%Y:%m:%d %H:%M:%S')
+                dt_digit = datetime.strptime(result['datetime_digitized'], '%Y:%m:%d %H:%M:%S')
+                time_diff = abs((dt_orig - dt_digit).total_seconds())
+                
+                if time_diff > 60:  # More than 1 minute difference
+                    result['metadata_warnings'].append(
+                        f"Timestamp mismatch: {time_diff:.0f}s between capture and digitization"
+                    )
+            except:
+                pass
+        
+        # Missing expected metadata for modern cameras
+        if not result['camera_make'] and not result['camera_model']:
+            result['metadata_warnings'].append(
+                "No camera information - unusual for modern devices"
+            )
+        
+        logger.info(f"EXIF extraction: camera={result.get('camera_model')}, "
+                   f"software={result.get('software')}, "
+                   f"warnings={len(result['metadata_warnings'])}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error extracting EXIF data: {e}")
+        return {
+            'has_exif': False,
+            'tampering_indicators': [f'Error reading metadata: {str(e)}'],
+            'metadata_warnings': []
+        }
+
+
+def convert_to_degrees(value, ref):
+    """
+    Convert GPS coordinates to degrees.
+    
+    EXIF GPS coordinates are stored as rational numbers (tuples of numerator/denominator).
+    
+    Args:
+        value: GPS coordinate value (degrees, minutes, seconds) as rational tuples
+        ref: Reference direction (N/S for latitude, E/W for longitude)
+    
+    Returns:
+        float: Coordinate in decimal degrees
+    """
+    try:
+        # Handle rational numbers from EXIF (numerator, denominator tuples)
+        def to_decimal(rational):
+            if isinstance(rational, tuple) and len(rational) == 2:
+                return float(rational[0]) / float(rational[1]) if rational[1] != 0 else 0.0
+            elif isinstance(rational, (int, float)):
+                return float(rational)
+            else:
+                return 0.0
+        
+        d = to_decimal(value[0])  # degrees
+        m = to_decimal(value[1])  # minutes
+        s = to_decimal(value[2])  # seconds
+        
+        degrees = d + (m / 60.0) + (s / 3600.0)
+        
+        if ref in ['S', 'W']:
+            degrees = -degrees
+        
+        return degrees
+    except (IndexError, TypeError, ZeroDivisionError) as e:
+        logger.error(f"Error converting GPS coordinates: {e}")
+        return 0.0

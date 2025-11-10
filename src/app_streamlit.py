@@ -19,7 +19,7 @@ from src.utils import load_image, compute_image_hash, draw_bounding_box, crop_re
 from src.detector import LogoDetector
 from src.classifier import BrandClassifier
 from src.severity import compute_severity, interpret_severity
-from src.tamper import error_level_analysis
+from src.tamper import error_level_analysis, extract_exif_metadata, detect_clone_regions
 from src.explain import generate_gradcam_for_crop, explain_classification
 from src.similarity import SimilaritySearcher
 from src.db import DetectionDatabase
@@ -247,12 +247,23 @@ def process_image(image, detector, classifier, similarity_searcher,
     # Run tamper detection on whole image
     ela_result = error_level_analysis(image)
     
+    # Extract EXIF metadata for forensic analysis
+    # Convert BGR to RGB then to PIL Image for EXIF extraction
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(image_rgb)
+    exif_data = extract_exif_metadata(pil_image)
+    
+    # Detect clone regions (simplified for performance)
+    clone_regions = detect_clone_regions(image, threshold=0.95)
+    
     processing_time = (time.time() - start_time) * 1000  # Convert to ms
     
     return {
         'success': True,
         'detections': processed_detections,
         'ela_result': ela_result,
+        'exif_data': exif_data,
+        'clone_regions': clone_regions,
         'processing_time_ms': processing_time
     }
 
@@ -520,24 +531,101 @@ def main():
             col2.metric("Avg Severity", f"{avg_severity:.1f}/100")
             col3.metric("Processing Time", f"{processing_time:.0f} ms")
             
-            # Show ELA results
+            # Show tamper detection results
             if show_ela:
-                st.markdown("### 🔬 Tamper Detection (Error Level Analysis)")
-                ela_result = result['ela_result']
+                st.markdown("### 🔬 Tamper Detection & Forensic Analysis")
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.image(cv2.cvtColor(ela_result['ela_image'], cv2.COLOR_BGR2RGB),
-                            caption="ELA Visualization", use_container_width=True)
+                tab_ela, tab_exif, tab_clone = st.tabs(["ELA Analysis", "EXIF Metadata", "Clone Detection"])
                 
-                with col2:
-                    st.metric("Mean Brightness", f"{ela_result['mean_brightness']:.2f}")
-                    st.metric("Suspiciousness", f"{ela_result['suspiciousness_score']:.2%}")
+                with tab_ela:
+                    ela_result = result['ela_result']
                     
-                    if ela_result['is_suspicious']:
-                        st.error("⚠️ Image shows signs of tampering!")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.image(cv2.cvtColor(ela_result['ela_image'], cv2.COLOR_BGR2RGB),
+                                caption="ELA Visualization", use_container_width=True)
+                    
+                    with col2:
+                        st.metric("Mean Brightness", f"{ela_result['mean_brightness']:.2f}")
+                        st.metric("Suspiciousness", f"{ela_result['suspiciousness_score']:.2%}")
+                        
+                        if ela_result['is_suspicious']:
+                            st.error("⚠️ Image shows signs of tampering!")
+                        else:
+                            st.success("✅ No significant tampering detected")
+                
+                with tab_exif:
+                    if result.get('exif_data'):
+                        exif = result['exif_data']
+                        
+                        if exif.get('has_exif'):
+                            st.success("✅ EXIF metadata found")
+                            
+                            # Camera information
+                            st.markdown("**📷 Camera Information**")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**Make:** {exif.get('camera_make') or 'N/A'}")
+                                st.write(f"**Model:** {exif.get('camera_model') or 'N/A'}")
+                                st.write(f"**Software:** {exif.get('software') or 'N/A'}")
+                            
+                            with col2:
+                                st.write(f"**ISO:** {exif.get('iso') or 'N/A'}")
+                                st.write(f"**F-Number:** {exif.get('f_number') or 'N/A'}")
+                                st.write(f"**Exposure:** {exif.get('exposure_time') or 'N/A'}")
+                            
+                            # Timestamps
+                            st.markdown("**🕐 Timestamps**")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**Original:** {exif.get('datetime_original') or 'N/A'}")
+                            with col2:
+                                st.write(f"**Digitized:** {exif.get('datetime_digitized') or 'N/A'}")
+                            
+                            # GPS information
+                            if exif.get('gps_latitude') or exif.get('gps_longitude'):
+                                st.markdown("**📍 GPS Location**")
+                                st.write(f"**Latitude:** {exif.get('gps_latitude'):.6f}" if exif.get('gps_latitude') else "N/A")
+                                st.write(f"**Longitude:** {exif.get('gps_longitude'):.6f}" if exif.get('gps_longitude') else "N/A")
+                                st.write(f"**Altitude:** {exif.get('gps_altitude'):.2f}m" if exif.get('gps_altitude') else "N/A")
+                            
+                            # Tampering indicators
+                            if exif.get('tampering_indicators'):
+                                st.markdown("**⚠️ Tampering Indicators**")
+                                for indicator in exif['tampering_indicators']:
+                                    st.warning(f"• {indicator}")
+                            
+                            # Metadata warnings
+                            if exif.get('metadata_warnings'):
+                                st.markdown("**🚨 Metadata Warnings**")
+                                for warning in exif['metadata_warnings']:
+                                    st.error(f"• {warning}")
+                        else:
+                            st.warning("⚠️ No EXIF metadata found - may have been stripped")
+                            if exif.get('tampering_indicators'):
+                                for indicator in exif['tampering_indicators']:
+                                    st.info(f"• {indicator}")
                     else:
-                        st.success("✅ No significant tampering detected")
+                        st.info("EXIF data not available")
+                
+                with tab_clone:
+                    if result.get('clone_regions'):
+                        clone_regions = result['clone_regions']
+                        
+                        if len(clone_regions) > 0:
+                            st.warning(f"⚠️ Found {len(clone_regions)} potential clone regions")
+                            
+                            st.markdown("**Clone Detection Results:**")
+                            for i, clone in enumerate(clone_regions[:10], 1):  # Show first 10
+                                st.write(f"{i}. Similarity: {clone['similarity']:.2%}, "
+                                       f"Locations: {clone['location1']} ↔ {clone['location2']}")
+                            
+                            if len(clone_regions) > 10:
+                                st.info(f"... and {len(clone_regions) - 10} more potential clones")
+                        else:
+                            st.success("✅ No clone-stamp regions detected")
+                    else:
+                        st.info("Clone detection not available")
             
             # Individual logo detections
             st.markdown("### 🏷️ Logo Detections")
