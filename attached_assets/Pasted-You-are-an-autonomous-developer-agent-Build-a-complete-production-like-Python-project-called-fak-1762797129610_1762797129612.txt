@@ -1,0 +1,123 @@
+You are an autonomous developer agent. Build a complete, production-like Python project called **fake_logo_suite** — a unified Fake Logo Detection & Forensics system with a Streamlit web UI. Deliver the full repo in the workspace with runnable code, minimal demo model(s), and documentation.
+
+REQUIREMENTS (high level)
+1. Web UI (Streamlit) that users can run with `streamlit run src/app_streamlit.py`.
+2. For any uploaded image (single or batch) or webcam frame, the app must:
+   - Detect and localize logos (bounding boxes).
+   - Classify brand/variant for each detected logo (multi-class).
+   - Compute a combined **Severity Score (0–100)** and a short breakdown (SSIM, color distance, classifier fake-probability).
+   - Run tamper hint (Error-Level Analysis) and show an ELA image + suspiciousness metric.
+   - Show Grad-CAM heatmap for classifier decision for each region.
+   - Optionally show top-5 visually similar logos from a reference DB (FAISS or Annoy).
+   - Save each detection to an SQLite audit log and allow PDF report generation for each processed image.
+
+3. The pipeline must be modular: `src/detector.py`, `src/classifier.py`, `src/similarity.py`, `src/severity.py`, `src/tamper.py`, `src/explain.py`, `src/report.py`, `src/db.py`, `src/utils.py`, `src/app_streamlit.py`.
+
+4. Provide a working small demo so reviewers can run the app without large downloads:
+   - Use template-matching or SIFT-based detection for the demo (fast, no heavy model download).
+   - Provide a tiny pre-trained classifier or simulate classifier output (if weights are large) but structure the code so real weights can be loaded later.
+   - If you include FAISS, prefer `faiss-cpu` and include fallback to Annoy if faiss fails.
+
+5. Include a `models/` folder and `data/logos_db/` with at least 6 sample brand logo images (thumbnails) and 10 sample test images (real + slightly edited fakes) so the demo can run offline.
+
+6. Provide a `requirements.txt` and an install/run README with exact commands:
+   - `pip install -r requirements.txt`
+   - `streamlit run src/app_streamlit.py`
+
+7. Tests & acceptance checks:
+   - A small script `run_demo.sh` that opens the Streamlit app and runs two automated demo calls:
+     1. Load `data/samples/real_logo1.jpg` and show detection + classification + severity < 40.
+     2. Load `data/samples/fake_logo1.jpg` (edited color/warped) and show detection + severity > 60 and ELA suspicious.
+   - Provide example screenshots saved in `demo_outputs/` after running the demo script.
+
+DETAILED TECH AND BEHAVIOR (developer instructions)
+- Language: Python 3.9+
+- UI: Streamlit (single-page, wide layout). Sidebar for options (webcam toggle, grad-cam toggle, show-similarity).
+- Detection:
+  - Provide two implementations: (A) template/SIFT+FLANN matching for demo and (B) a wrapper placeholder for YOLOv5/YOLOv8 (commented with instructions to install/train).
+  - Detected boxes should be shown on image with labels and confidence.
+- Classification:
+  - Provide a PyTorch transfer-learning wrapper (MobileNetV2 or ResNet18) with `load_classifier(model_path=None)`; if no weights present, return deterministic dummy predictions (so UI still works).
+  - Provide code for training in `train/train_classifier.py` (data loader, training loop, save model), but training may be optional for the demo.
+- Severity:
+  - Combine: classifier_fake_prob (1 - model_confidence_for_real), SSIM (1 - ssim), and color-histogram distance mapped to 0..1. Return severity integer 0–100 and a breakdown dictionary.
+- Grad-CAM:
+  - Implement a Grad-CAM function compatible with the classifier wrapper and overlay the heatmap on the crop.
+- Tamper:
+  - Implement ELA (Error Level Analysis) function that returns ELA image and mean brightness; use heuristic to flag suspicious edits.
+- Similarity:
+  - Add an embedding encoder (ResNet without final fc) and build a small FAISS index from `data/logos_db/`. If faiss not available, use Annoy. Provide functions to build index and query it.
+- Database & Report:
+  - SQLite DB `detections.db` with fields (id, filename, brand, conf, severity, breakdown, timestamp, image_hash).
+  - PDF export (ReportLab or FPDF) that includes thumbnail, bounding boxes, label/conf, severity breakdown, and ELA image.
+- Logging:
+  - Console and file logging (rotate logs optional). Log each API call/demo run.
+
+REPO LAYOUT (create exactly)
+fake_logo_suite/
+├─ models/
+│  ├─ demo_classifier.pth   # if small, include; else leave placeholder and simulate predictions
+├─ data/
+│  ├─ logos_db/             # must contain at least 6 reference logos (png/jpg)
+│  ├─ samples/              # must contain at least 10 test images (real + fake)
+├─ src/
+│  ├─ app_streamlit.py
+│  ├─ utils.py
+│  ├─ detector.py
+│  ├─ classifier.py
+│  ├─ similarity.py
+│  ├─ severity.py
+│  ├─ tamper.py
+│  ├─ explain.py
+│  ├─ report.py
+│  └─ db.py
+├─ train/
+│  └─ train_classifier.py
+├─ demo_outputs/
+├─ requirements.txt
+├─ README.md
+└─ run_demo.sh
+
+DELIVERABLES (what you must commit)
+1. All source files described above.
+2. `requirements.txt` with exact package versions.
+3. `README.md` containing:
+   - Project summary (2–3 lines)
+   - Setup & run instructions (install, run, run_demo.sh)
+   - Demo walkthrough (what to click and expected outputs)
+   - Notes on how to replace placeholder models with trained weights.
+4. `data/logos_db/` with at least 6 logo images and `data/samples/` with at least 10 images (mix of real and edited fake logos).
+5. `run_demo.sh` that auto-runs two demo checks and saves screenshots in `demo_outputs/`.
+6. Optional: small pre-trained `models/demo_classifier.pth` (if you include a model, it should be small and easily runnable on CPU); otherwise, ensure dummy predictions are deterministic and explain how to train real model using `train/train_classifier.py`.
+7. At least 5 meaningful inline comments per major module explaining non-obvious code.
+8. Automated simple unit tests (pytest or similar) for `severity.compute_severity`, `tamper.error_level_analysis` and `similarity.embed_image`.
+
+ACCEPTANCE CRITERIA (how I will grade)
+- `streamlit run src/app_streamlit.py` launches the UI and the demo images in `data/samples` can be loaded and processed without crashes.
+- The app shows bounding box overlays, label/confidence, severity score and breakdown, Grad-CAM overlays, ELA image, and allows PDF export.
+- Demo script `run_demo.sh` runs and writes at least two screenshots into `demo_outputs/`.
+- SQLite `detections.db` is created and receives at least the two demo entries after running the demo script.
+- Project contains README with run instructions and notes for future training.
+
+PRIORITIZE (if you must cut scope for time)
+1. Working Streamlit app + template/SIFT detector + severity + ELA + logging + PDF export.
+2. Add classifier wrapper (dummy if necessary) and Grad-CAM overlay.
+3. Add FAISS similarity and training scripts later.
+
+IMPLEMENTATION NOTES FOR YOU (agent)
+- Use CPU-first compatible code (no CUDA dependency required).
+- If external dataset files are needed, download small sample subsets only; do not require huge downloads. For real dataset links, include clear comments describing how to download full datasets offline later.
+- If using heavy packages (YOLOv5), include them as optional and guard with try/except.
+- Make user experience smooth: show progress and friendly messages in Streamlit during model loads and processing.
+- Add unit tests in `tests/` and a `tox`/`pytest` command in README.
+
+When you finish:
+- Commit all files.
+- Run `run_demo.sh` and attach the generated screenshots into `demo_outputs/`.
+- Provide a short final message in the repo root `DONE.md` summarizing what features are implemented and what is left to add.
+
+If you have any ambiguity about asset sizes (models or dataset), ask a single clarifying question before downloading large assets; otherwise prefer small demo assets packaged with the repo.
+
+Start work now and keep commits incremental: create initial skeleton + demo assets, then implement modules one by one. When finished, produce the full working Streamlit app and the demo outputs.
+
+Thank you — begin.
