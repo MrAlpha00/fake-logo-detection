@@ -112,12 +112,36 @@ Preferred communication style: Simple, everyday language.
 
 ### Training Pipeline
 
-**Classifier Training** (`train/train_classifier.py`)
-- PyTorch-based training loop for MobileNetV2
-- Custom LogoDataset class expecting directory structure: `data_dir/brand_name/image.jpg`
-- Data augmentation pipeline (random rotations, flips, color jitter)
-- Checkpoint saving with best validation accuracy
-- Supports CLI arguments for configuration (epochs, learning rate, batch size)
+**Classifier Training** (`train/train_classifier.py` - **PRODUCTION-READY**)
+- PyTorch-based training loop for MobileNetV2 transfer learning
+- Custom LogoDataset class with automatic class discovery
+- Training-time augmentation: rotations, flips, color jitter, normalization
+- Validation split with separate evaluation pipeline
+- Learning rate scheduling with ReduceLROnPlateau
+- Automatic best model checkpointing based on validation accuracy
+- Class name persistence for production deployment
+- Supports CLI arguments for full configuration
+
+**Data Preparation** (`train/prepare_training_data.py` - **NEW**)
+- Automated dataset organization from raw logo images
+- Comprehensive augmentation pipeline with 10 techniques:
+  * Random rotation, scaling, perspective transforms
+  * Brightness, contrast, saturation adjustments
+  * Gaussian noise, blur, cropping
+  * JPEG compression artifact simulation
+- Configurable augmentation factor (default: 10x expansion)
+- Progress tracking and statistics reporting
+- Production-ready for real-world training workflows
+
+**Training Guide** (`train/TRAINING_GUIDE.md` - **NEW**)
+- Complete end-to-end training documentation
+- Data collection best practices (50-500 images per brand)
+- Dataset diversity guidelines (size, background, quality, angle, lighting)
+- Step-by-step preparation, augmentation, and training instructions
+- Hardware requirements and performance benchmarks
+- Troubleshooting guide for low accuracy (<80%)
+- Production deployment checklist
+- Advanced techniques: fine-tuning, transfer learning, active learning
 
 **YOLO Training** (`train/train_yolo.py` - **NEW**)
 - Comprehensive training guide for YOLOv8 logo detection models
