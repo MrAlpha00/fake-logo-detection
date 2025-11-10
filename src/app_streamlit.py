@@ -10,6 +10,7 @@ from PIL import Image
 import time
 from pathlib import Path
 import sys
+import plotly.graph_objects as go
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -70,6 +71,108 @@ def load_models(detection_method='sift'):
         
         logger.info("All models and components loaded")
         return detector, classifier, similarity_searcher, db, report_gen
+
+
+def create_severity_gauge(severity_score, title="Severity Score"):
+    """Create an attractive gauge chart for severity visualization."""
+    # Determine color based on severity
+    if severity_score < 30:
+        color = "#27ae60"  # Green
+        bar_color = "lightgreen"
+    elif severity_score < 60:
+        color = "#f39c12"  # Yellow
+        bar_color = "gold"
+    elif severity_score < 80:
+        color = "#e67e22"  # Orange
+        bar_color = "orange"
+    else:
+        color = "#e74c3c"  # Red
+        bar_color = "red"
+    
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=severity_score,
+        title={'text': title, 'font': {'size': 20}},
+        delta={'reference': 50, 'increasing': {'color': "red"}},
+        gauge={
+            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkgray"},
+            'bar': {'color': bar_color},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 30], 'color': '#d5f4e6'},
+                {'range': [30, 60], 'color': '#fef5e7'},
+                {'range': [60, 80], 'color': '#fadbd8'},
+                {'range': [80, 100], 'color': '#f5b7b1'}
+            ],
+            'threshold': {
+                'line': {'color': color, 'width': 4},
+                'thickness': 0.75,
+                'value': severity_score
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=250,
+        margin=dict(l=20, r=20, t=50, b=20),
+        paper_bgcolor="white",
+        font={'color': "darkgray", 'family': "Arial"}
+    )
+    
+    return fig
+
+
+def create_confidence_gauge(fake_probability, title="Fake Probability"):
+    """Create an attractive gauge chart for fake confidence visualization."""
+    # Invert color scheme - higher fake probability = worse
+    if fake_probability < 0.3:
+        color = "#27ae60"  # Green
+        bar_color = "lightgreen"
+    elif fake_probability < 0.6:
+        color = "#f39c12"  # Yellow
+        bar_color = "gold"
+    elif fake_probability < 0.8:
+        color = "#e67e22"  # Orange
+        bar_color = "orange"
+    else:
+        color = "#e74c3c"  # Red
+        bar_color = "red"
+    
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=fake_probability * 100,
+        title={'text': title, 'font': {'size': 18}},
+        number={'suffix': "%"},
+        gauge={
+            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkgray"},
+            'bar': {'color': bar_color},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 30], 'color': '#d5f4e6'},
+                {'range': [30, 60], 'color': '#fef5e7'},
+                {'range': [60, 80], 'color': '#fadbd8'},
+                {'range': [80, 100], 'color': '#f5b7b1'}
+            ],
+            'threshold': {
+                'line': {'color': color, 'width': 4},
+                'thickness': 0.75,
+                'value': fake_probability * 100
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=200,
+        margin=dict(l=10, r=10, t=40, b=10),
+        paper_bgcolor="white",
+        font={'color': "darkgray", 'family': "Arial"}
+    )
+    
+    return fig
 
 
 def process_image(image, detector, classifier, similarity_searcher, 
@@ -137,7 +240,8 @@ def process_image(image, detector, classifier, similarity_searcher,
             'severity': severity,
             'gradcam': gradcam_overlay,
             'similar_logos': similar_logos,
-            'crop': logo_crop
+            'crop': logo_crop,
+            'ref_template': ref_template
         })
     
     # Run tamper detection on whole image
@@ -211,44 +315,74 @@ def main():
     st.sidebar.metric("Fake Logos Detected", stats.get('total_fakes', 0))
     
     # Main content tabs
-    tab1, tab2, tab3 = st.tabs(["📤 Upload & Analyze", "📚 Detection History", "ℹ️ About"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload & Analyze", "📊 Analytics Dashboard", "📚 Detection History", "ℹ️ About"])
     
     with tab1:
         st.subheader("Upload Image for Analysis")
         
-        # File uploader
-        uploaded_file = st.file_uploader(
-            "Choose an image file",
-            type=['png', 'jpg', 'jpeg'],
-            help="Upload an image containing logos to analyze"
+        # Input mode selector
+        input_mode = st.radio(
+            "Choose input method:",
+            ["📁 Upload File", "📸 Use Camera", "🖼️ Demo Images"],
+            horizontal=True
         )
         
-        # Demo image selector
-        st.markdown("**Or select a demo image:**")
-        demo_images = sorted(Path('data/samples').glob('*.jpg'))
-        demo_names = [img.name for img in demo_images]
+        uploaded_file = None
+        camera_photo = None
+        selected_demo = "None"
         
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            selected_demo = st.selectbox("Demo Images", ["None"] + demo_names)
-        with col2:
-            analyze_button = st.button("🔍 Analyze", type="primary", use_container_width=True)
+        if input_mode == "📁 Upload File":
+            # File uploader
+            uploaded_file = st.file_uploader(
+                "Choose an image file",
+                type=['png', 'jpg', 'jpeg'],
+                help="Upload an image containing logos to analyze"
+            )
+        
+        elif input_mode == "📸 Use Camera":
+            # Camera input
+            st.markdown("**Take a photo with your camera/webcam:**")
+            camera_photo = st.camera_input("Capture logo image")
+            
+        elif input_mode == "🖼️ Demo Images":
+            # Demo image selector
+            st.markdown("**Select a demo image:**")
+            demo_images = sorted(Path('data/samples').glob('*.jpg'))
+            demo_names = [img.name for img in demo_images]
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                selected_demo = st.selectbox("Demo Images", ["None"] + demo_names)
+            with col2:
+                analyze_button = st.button("🔍 Analyze", type="primary", use_container_width=True)
+        
+        # Auto-analyze for upload and camera (or button for demo)
+        should_analyze = (
+            uploaded_file is not None or 
+            camera_photo is not None or
+            (input_mode == "🖼️ Demo Images" and 'analyze_button' in locals() and analyze_button)
+        )
         
         # Process image
-        if analyze_button or uploaded_file is not None:
+        if should_analyze:
             # Load image
             if uploaded_file is not None:
-                # From upload
+                # From file upload
                 file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
                 image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                 filename = uploaded_file.name
+            elif camera_photo is not None:
+                # From camera capture
+                file_bytes = np.asarray(bytearray(camera_photo.getvalue()), dtype=np.uint8)
+                image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                filename = f"camera_capture_{int(time.time())}.jpg"
             elif selected_demo != "None":
                 # From demo selection
                 demo_path = Path('data/samples') / selected_demo
                 image = cv2.imread(str(demo_path))
                 filename = selected_demo
             else:
-                st.warning("Please upload an image or select a demo image")
+                st.warning("Please select an input method to analyze")
                 return
             
             if image is None:
@@ -336,17 +470,57 @@ def main():
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.markdown("**Logo Crop**")
-                        st.image(cv2.cvtColor(det['crop'], cv2.COLOR_BGR2RGB),
-                                use_container_width=True)
+                        # Comparison View: Detected vs Reference
+                        st.markdown("**📊 Comparison: Detected vs Reference**")
+                        
+                        # Get reference template
+                        ref_template = det.get('ref_template')
+                        if ref_template is not None:
+                            # Resize both to same size for comparison
+                            h, w = det['crop'].shape[:2]
+                            ref_resized = cv2.resize(ref_template, (w, h))
+                            
+                            # Create difference image
+                            diff = cv2.absdiff(det['crop'], ref_resized)
+                            diff_gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+                            diff_colored = cv2.applyColorMap(diff_gray, cv2.COLORMAP_JET)
+                            
+                            # Show comparison
+                            comp_col1, comp_col2, comp_col3 = st.columns(3)
+                            with comp_col1:
+                                st.image(cv2.cvtColor(det['crop'], cv2.COLOR_BGR2RGB),
+                                        caption="Detected", use_container_width=True)
+                            with comp_col2:
+                                st.image(cv2.cvtColor(ref_resized, cv2.COLOR_BGR2RGB),
+                                        caption="Reference", use_container_width=True)
+                            with comp_col3:
+                                st.image(cv2.cvtColor(diff_colored, cv2.COLOR_BGR2RGB),
+                                        caption="Difference", use_container_width=True)
+                        else:
+                            st.image(cv2.cvtColor(det['crop'], cv2.COLOR_BGR2RGB),
+                                    caption="Logo Crop", use_container_width=True)
                         
                         if show_gradcam and det['gradcam'] is not None:
-                            st.markdown("**Grad-CAM Heatmap**")
+                            st.markdown("**🔥 Grad-CAM Heatmap**")
                             st.image(cv2.cvtColor(det['gradcam'], cv2.COLOR_BGR2RGB),
                                     use_container_width=True)
                     
                     with col2:
-                        st.markdown(f"**Severity: {det['severity']['severity_score']}/100**")
+                        # Severity Gauge
+                        st.plotly_chart(
+                            create_severity_gauge(det['severity']['severity_score']),
+                            use_container_width=True,
+                            key=f"severity_gauge_{i}"
+                        )
+                        
+                        # Fake Probability Gauge  
+                        fake_prob = det['classification']['is_fake_prob']
+                        st.plotly_chart(
+                            create_confidence_gauge(fake_prob),
+                            use_container_width=True,
+                            key=f"fake_gauge_{i}"
+                        )
+                        
                         st.markdown(f"**Level:** :{severity_info['color']}[{severity_info['level']}]")
                         st.markdown(f"*{severity_info['description']}*")
                         
@@ -405,6 +579,134 @@ def main():
             st.info(f"Detection logged to database (ID: {detection_id})")
     
     with tab2:
+        st.subheader("📊 Analytics Dashboard")
+        
+        # Get all detections for analytics
+        all_detections = db.get_recent_detections(limit=1000)
+        
+        if not all_detections or len(all_detections) == 0:
+            st.info("No detection data yet. Upload and analyze some images to see analytics!")
+        else:
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            total_detections = len(all_detections)
+            total_logos = sum(d['num_detections'] for d in all_detections)
+            
+            # Calculate fakes and avg severity
+            total_fakes = 0
+            total_severity = 0
+            severity_counts = {'Low': 0, 'Medium': 0, 'High': 0, 'Critical': 0}
+            
+            for det in all_detections:
+                details = db.get_detection_details(det['id'])
+                if details and details.get('logos'):
+                    for logo in details['logos']:
+                        severity = logo.get('severity_score', 0)
+                        total_severity += severity
+                        
+                        # Categorize severity
+                        if severity < 30:
+                            severity_counts['Low'] += 1
+                        elif severity < 50:
+                            severity_counts['Medium'] += 1
+                        elif severity < 70:
+                            severity_counts['High'] += 1
+                        else:
+                            severity_counts['Critical'] += 1
+                            total_fakes += 1
+            
+            avg_severity = total_severity / max(total_logos, 1)
+            
+            col1.metric("📸 Total Images", total_detections)
+            col2.metric("🏷️ Total Logos", total_logos)
+            col3.metric("❌ Fake Logos", total_fakes)
+            col4.metric("📈 Avg Severity", f"{avg_severity:.1f}")
+            
+            st.markdown("---")
+            
+            # Charts
+            chart_col1, chart_col2 = st.columns(2)
+            
+            with chart_col1:
+                # Fake vs Real Pie Chart
+                real_logos = total_logos - total_fakes
+                fig_pie = go.Figure(data=[go.Pie(
+                    labels=['Real', 'Fake'],
+                    values=[real_logos, total_fakes],
+                    marker=dict(colors=['#27ae60', '#e74c3c']),
+                    hole=0.4
+                )])
+                fig_pie.update_layout(
+                    title="Logo Authenticity Distribution",
+                    height=300,
+                    margin=dict(l=20, r=20, t=50, b=20)
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+                # Severity Levels Bar Chart
+                fig_bar = go.Figure(data=[go.Bar(
+                    x=list(severity_counts.keys()),
+                    y=list(severity_counts.values()),
+                    marker=dict(color=['#27ae60', '#f39c12', '#e67e22', '#e74c3c'])
+                )])
+                fig_bar.update_layout(
+                    title="Severity Level Distribution",
+                    xaxis_title="Severity Level",
+                    yaxis_title="Count",
+                    height=300,
+                    margin=dict(l=20, r=20, t=50, b=20)
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
+            
+            with chart_col2:
+                # Detections over time (line chart)
+                import pandas as pd
+                from datetime import datetime
+                
+                # Extract timestamps
+                timestamps = [d['timestamp'] for d in all_detections]
+                dates = [datetime.fromisoformat(ts).date() if isinstance(ts, str) else ts for ts in timestamps]
+                
+                # Count detections per day
+                date_counts = {}
+                for date in dates:
+                    date_str = str(date)
+                    date_counts[date_str] = date_counts.get(date_str, 0) + 1
+                
+                fig_line = go.Figure(data=[go.Scatter(
+                    x=list(date_counts.keys()),
+                    y=list(date_counts.values()),
+                    mode='lines+markers',
+                    marker=dict(size=8, color='#3498db'),
+                    line=dict(width=2, color='#3498db')
+                )])
+                fig_line.update_layout(
+                    title="Detections Over Time",
+                    xaxis_title="Date",
+                    yaxis_title="Number of Detections",
+                    height=300,
+                    margin=dict(l=20, r=20, t=50, b=20)
+                )
+                st.plotly_chart(fig_line, use_container_width=True)
+                
+                # Processing time distribution
+                processing_times = [d['processing_time_ms'] for d in all_detections if d.get('processing_time_ms')]
+                
+                fig_hist = go.Figure(data=[go.Histogram(
+                    x=processing_times,
+                    marker=dict(color='#9b59b6'),
+                    nbinsx=20
+                )])
+                fig_hist.update_layout(
+                    title="Processing Time Distribution",
+                    xaxis_title="Processing Time (ms)",
+                    yaxis_title="Frequency",
+                    height=300,
+                    margin=dict(l=20, r=20, t=50, b=20)
+                )
+                st.plotly_chart(fig_hist, use_container_width=True)
+    
+    with tab3:
         st.subheader("Detection History")
         
         recent_detections = db.get_recent_detections(limit=20)
@@ -427,7 +729,7 @@ def main():
         else:
             st.info("No detection history yet. Upload and analyze some images!")
     
-    with tab3:
+    with tab4:
         st.subheader("About Fake Logo Detection Suite")
         
         st.markdown("""
