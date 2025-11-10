@@ -59,10 +59,10 @@ st.markdown("""
 
 
 @st.cache_resource
-def load_models():
+def load_models(detection_method='sift'):
     """Load all ML models and initialize components (cached)."""
     with st.spinner("Loading models and building indices..."):
-        detector = LogoDetector(method='sift')  # Using SIFT for demo
+        detector = LogoDetector(method=detection_method, yolo_model_path='models/yolov8_logo.onnx')
         classifier = BrandClassifier()  # Demo mode with deterministic predictions
         similarity_searcher = SimilaritySearcher()
         db = DetectionDatabase()
