@@ -323,20 +323,21 @@ def main():
         # Input mode selector
         input_mode = st.radio(
             "Choose input method:",
-            ["📁 Upload File", "📸 Use Camera", "🖼️ Demo Images"],
+            ["📁 Upload File(s)", "📸 Use Camera", "🖼️ Demo Images"],
             horizontal=True
         )
         
-        uploaded_file = None
+        uploaded_files = []
         camera_photo = None
         selected_demo = "None"
         
-        if input_mode == "📁 Upload File":
-            # File uploader
-            uploaded_file = st.file_uploader(
-                "Choose an image file",
+        if input_mode == "📁 Upload File(s)":
+            # File uploader with batch support
+            uploaded_files = st.file_uploader(
+                "Choose one or more image files (drag & drop supported)",
                 type=['png', 'jpg', 'jpeg'],
-                help="Upload an image containing logos to analyze"
+                accept_multiple_files=True,
+                help="Upload single or multiple images for batch processing"
             )
         
         elif input_mode == "📸 Use Camera":
@@ -358,32 +359,133 @@ def main():
         
         # Auto-analyze for upload and camera (or button for demo)
         should_analyze = (
-            uploaded_file is not None or 
+            (uploaded_files and len(uploaded_files) > 0) or 
             camera_photo is not None or
             (input_mode == "🖼️ Demo Images" and 'analyze_button' in locals() and analyze_button)
         )
         
-        # Process image
+        # Process image(s)
         if should_analyze:
-            # Load image
-            if uploaded_file is not None:
-                # From file upload
-                file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-                image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-                filename = uploaded_file.name
+            # Collect images to process
+            images_to_process = []
+            
+            if uploaded_files and len(uploaded_files) > 0:
+                # Batch upload mode
+                for uploaded_file in uploaded_files:
+                    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+                    image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                    if image is not None:
+                        images_to_process.append((image, uploaded_file.name))
+                        
             elif camera_photo is not None:
-                # From camera capture
+                # Camera capture
                 file_bytes = np.asarray(bytearray(camera_photo.getvalue()), dtype=np.uint8)
                 image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-                filename = f"camera_capture_{int(time.time())}.jpg"
+                if image is not None:
+                    images_to_process.append((image, f"camera_capture_{int(time.time())}.jpg"))
+                    
             elif selected_demo != "None":
-                # From demo selection
+                # Demo selection
                 demo_path = Path('data/samples') / selected_demo
                 image = cv2.imread(str(demo_path))
-                filename = selected_demo
-            else:
+                if image is not None:
+                    images_to_process.append((image, selected_demo))
+                    
+            if not images_to_process:
                 st.warning("Please select an input method to analyze")
                 return
+            
+            # Batch processing with progress bar
+            if len(images_to_process) > 1:
+                st.markdown(f"### 🚀 Batch Processing {len(images_to_process)} Images")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                batch_results = []
+                successful_count = 0
+                failed_count = 0
+                
+                for idx, (image, filename) in enumerate(images_to_process):
+                    status_text.text(f"Processing {idx+1}/{len(images_to_process)}: {filename}")
+                    progress_bar.progress((idx + 1) / len(images_to_process))
+                    
+                    result = process_image(
+                        image, detector, classifier, similarity_searcher,
+                        show_gradcam, show_similarity, confidence_threshold
+                    )
+                    
+                    # Include ALL results, success or failure
+                    batch_results.append({
+                        'filename': filename,
+                        'result': result,
+                        'image': image,
+                        'success': result['success']
+                    })
+                    
+                    if result['success']:
+                        successful_count += 1
+                    else:
+                        failed_count += 1
+                    
+                    # Log to database
+                    image_hash = compute_image_hash(image)
+                    detection_id = db.log_detection(
+                        filename, image_hash, result['detections'] if result['success'] else [],
+                        result.get('processing_time_ms', 0)
+                    )
+                    if result['success'] and result.get('ela_result'):
+                        db.log_tamper_analysis(detection_id, result['ela_result'])
+                
+                progress_bar.empty()
+                status_text.empty()
+                
+                # Show batch summary
+                st.markdown("### 📋 Batch Summary")
+                summary_data = []
+                for br in batch_results:
+                    if br['success']:
+                        num_logos = len(br['result']['detections'])
+                        avg_severity = np.mean([d['severity']['severity_score'] for d in br['result']['detections']]) if num_logos > 0 else 0
+                        status = "✅ Success"
+                        processing_time = br['result'].get('processing_time_ms', 0)
+                    else:
+                        num_logos = 0
+                        avg_severity = 0
+                        status = f"⚠️ No detections"
+                        processing_time = br['result'].get('processing_time_ms', 0)
+                    
+                    summary_data.append({
+                        'Filename': br['filename'],
+                        'Status': status,
+                        'Logos Found': num_logos,
+                        'Avg Severity': f"{avg_severity:.1f}" if avg_severity > 0 else "N/A",
+                        'Processing (ms)': f"{processing_time:.0f}"
+                    })
+                
+                import pandas as pd
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df, use_container_width=True)
+                
+                # Show detailed status
+                if failed_count > 0:
+                    st.warning(f"⚠️ Processed {len(batch_results)} images: {successful_count} with detections, {failed_count} with no detections")
+                else:
+                    st.success(f"✅ Successfully processed {len(batch_results)} images, all with detections!")
+                
+                # Allow downloading batch results as CSV
+                if st.button("📥 Download Batch Results as CSV"):
+                    csv = summary_df.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name=f"batch_results_{int(time.time())}.csv",
+                        mime="text/csv"
+                    )
+                
+                return  # Skip single image display for batch
+            
+            # Single image processing (original flow)
+            image, filename = images_to_process[0]
             
             if image is None:
                 st.error("Error loading image")
@@ -709,11 +811,77 @@ def main():
     with tab3:
         st.subheader("Detection History")
         
-        recent_detections = db.get_recent_detections(limit=20)
+        # Export options
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            limit = st.slider("Number of records to show/export", 10, 1000, 50, step=10)
+        with col2:
+            export_format = st.selectbox("Export Format", ["CSV", "Excel"])
+        
+        recent_detections = db.get_recent_detections(limit=limit)
         
         if recent_detections:
             st.markdown(f"**Showing {len(recent_detections)} most recent detections**")
             
+            # Prepare export data
+            export_data = []
+            for det in recent_detections:
+                details = db.get_detection_details(det['id'])
+                if details and details.get('logos'):
+                    for logo in details['logos']:
+                        export_data.append({
+                            'Detection ID': det['id'],
+                            'Filename': det['filename'],
+                            'Timestamp': det['timestamp'],
+                            'Brand': logo['brand'],
+                            'Severity Score': logo['severity_score'],
+                            'Processing Time (ms)': det['processing_time_ms']
+                        })
+                else:
+                    export_data.append({
+                        'Detection ID': det['id'],
+                        'Filename': det['filename'],
+                        'Timestamp': det['timestamp'],
+                        'Brand': 'N/A',
+                        'Severity Score': 0,
+                        'Processing Time (ms)': det['processing_time_ms']
+                    })
+            
+            # Export button
+            if st.button(f"📥 Export History as {export_format}", use_container_width=True):
+                import pandas as pd
+                import io
+                
+                df = pd.DataFrame(export_data)
+                
+                if export_format == "CSV":
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        label="⬇️ Download CSV",
+                        data=csv,
+                        file_name=f"detection_history_{int(time.time())}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                else:  # Excel
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='Detection History', index=False)
+                    buffer.seek(0)
+                    
+                    st.download_button(
+                        label="⬇️ Download Excel",
+                        data=buffer,
+                        file_name=f"detection_history_{int(time.time())}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                
+                st.success(f"✅ Exported {len(export_data)} records!")
+            
+            st.markdown("---")
+            
+            # Display history
             for det in recent_detections:
                 with st.expander(f"{det['filename']} - {det['timestamp']}"):
                     col1, col2, col3 = st.columns(3)
