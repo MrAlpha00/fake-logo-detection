@@ -173,11 +173,11 @@ class LogoDetector:
             for pair in matches:
                 if len(pair) == 2:
                     m, n = pair
-                    if m.distance < 0.7 * n.distance:
+                    if m.distance < 0.75 * n.distance:  # Slightly more lenient
                         good_matches.append(m)
             
-            # Require minimum number of good matches
-            if len(good_matches) >= 10:
+            # Require minimum number of good matches (reduced from 10 to 6 for better detection)
+            if len(good_matches) >= 6:
                 # Extract matched keypoint locations
                 src_pts = np.float32([kp_template[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
                 dst_pts = np.float32([kp_image[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
@@ -200,9 +200,9 @@ class LogoDetector:
                         x, y = int(min(x_coords)), int(min(y_coords))
                         w, h = int(max(x_coords) - x), int(max(y_coords) - y)
                         
-                        # Confidence based on number of inliers
+                        # Confidence based on number of inliers (adjusted for better detection)
                         inliers = np.sum(mask)
-                        confidence = min(1.0, inliers / 30.0)
+                        confidence = min(1.0, inliers / 15.0)  # Reduced from 30 to 15 for more realistic scores
                         
                         if confidence >= threshold and w > 0 and h > 0:
                             bbox = (x, y, w, h)
