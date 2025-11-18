@@ -34,6 +34,7 @@
      ```
      streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
      ```
+     **Note:** Additional settings like CORS are configured in `.streamlit/config.toml`
 
 4. **Environment Variables:**
    - `PYTHON_VERSION` = `3.11.0`
