@@ -12,22 +12,46 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Updates
 
-### Completed Features
+### Latest Session (November 18, 2025)
+1. ✅ **Fixed Detection Thresholds**: Improved logo detection accuracy for real-world images
+   - Lowered SIFT minimum matches from 6 to 4 for better recall
+   - Increased Lowe ratio from 0.75 to 0.8 for more lenient matching
+   - Enhanced template matching with dynamic threshold calculation
+2. ✅ **Online Logo Fetching**: Integrated Brandfetch API for real-time logo acquisition
+   - 500,000 free API requests per month
+   - Fetch logos by domain or company name
+   - Save fetched logos to templates database for detection
+   - Optional API key configuration via environment or UI
+3. ✅ **Analytics Dashboard**: Comprehensive detection analytics below results
+   - Severity distribution charts and component breakdown
+   - Confidence score scatter plots and risk pie charts
+   - Summary statistics table with averages and counts
+
+### Previous Features
 1. ✅ Enhanced Tamper Detection (EXIF metadata, GPS coordinates, clone detection)
 2. ✅ Production Training Infrastructure (data preparation, augmentation, comprehensive guide)
 3. ✅ User Authentication & RBAC (login/signup, 3 roles, session management)
-4. ⏳ Email/SMS Alert System (in progress)
 
 ## System Architecture
 
 ### Frontend Architecture
 
-**Streamlit Web Application** (`src/app_streamlit.py`)
+**Streamlit Web Application** (`src/app_streamlit.py` - **ENHANCED**)
 - Single-page wide layout with sidebar controls
 - Real-time image upload and webcam capture support
 - Interactive visualization of detection results, severity scores, and heatmaps
+- **Online Logo Fetcher**: Sidebar integration for Brandfetch API
+  - Fetch logos by domain or company name
+  - Optional API key configuration with instructions
+  - Save fetched logos to templates database
+  - Preview fetched logos with brand colors
+- **Analytics Dashboard**: Detailed metrics displayed below each detection
+  - Severity distribution and component breakdown charts
+  - Confidence scatter plots and risk pie charts
+  - Summary statistics table
 - Batch processing capabilities for multiple images
 - PDF report generation triggers
+- Detection threshold controls (confidence slider)
 
 **FastAPI REST API** (`src/api.py` - **NEW**)
 - Production-ready REST API for enterprise integration
@@ -43,8 +67,11 @@ Preferred communication style: Simple, everyday language.
 
 **Modular Pipeline Design** - Each component operates independently with clear interfaces:
 
-1. **Detection Module** (`src/detector.py`)
-   - **YOLO Detection (NEW)**: Production-grade YOLOv8 support via ONNX Runtime for improved accuracy
+1. **Detection Module** (`src/detector.py` - **ENHANCED**)
+   - **Optimized Thresholds**: Improved detection for real-world camera images
+     - SIFT: Minimum 4 matches (down from 6), Lowe ratio 0.8 (up from 0.75)
+     - Template matching: Dynamic threshold with confidence floor of 0.2
+   - **YOLO Detection**: Production-grade YOLOv8 support via ONNX Runtime for improved accuracy
    - Primary method: SIFT feature matching with FLANN-based matcher for fast keypoint matching
    - Alternative: Template matching using OpenCV for simple logo detection
    - ONNX-based YOLO inference with proper sigmoid/objectness handling
@@ -105,10 +132,30 @@ Preferred communication style: Simple, everyday language.
    - Image hashing (MD5) for deduplication
    - Centralized logging configuration with file and console handlers
 
+10. **Online Logo Fetcher Module** (`src/logo_fetcher.py` - **NEW**)
+   - Brandfetch API integration for real-time logo acquisition
+   - Fetch logos by domain (e.g., "nike.com") or company name (e.g., "Nike")
+   - Brand metadata extraction (colors, domains, names)
+   - Logo caching to `data/fetched_logos/` directory
+   - Save to templates database for detection pipeline integration
+   - Optional API key configuration (env var or UI input)
+   - 500,000 free API requests per month
+
+11. **Analytics Dashboard Module** (`src/analytics.py` - **NEW**)
+   - Comprehensive detection metrics computation
+   - Multiple visualization charts:
+     - Severity distribution bar chart
+     - Component breakdown bar chart (SSIM, color, classifier)
+     - Confidence score scatter plot
+     - Risk category pie chart
+   - Summary statistics table with averages and counts
+   - Risk assessment categorization (Low/Medium/High/Critical)
+
 ### Data Storage
 
 **File-based Storage:**
 - Reference logos: `data/logos_db/` (6+ brand logo templates)
+- Fetched logos: `data/fetched_logos/` (logos from Brandfetch API - **NEW**)
 - Sample test images: `data/samples/` (real and fake variants for demo)
 - Model weights: `models/` (classifier checkpoints, similarity indices)
 - Generated reports: `reports/` (PDF outputs)
