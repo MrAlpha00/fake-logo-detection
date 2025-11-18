@@ -73,6 +73,12 @@ For email/SMS alerts, add these later:
 - Verify start command is correct
 - Check memory usage (512MB limit)
 
+**JavaScript/Module Loading Errors?**
+- "TypeError: Failed to fetch dynamically imported module"
+- **Fix:** Ensure `.streamlit/config.toml` does NOT hardcode serverAddress or serverPort in [browser] section
+- Let Streamlit auto-detect the correct URL based on Render's dynamic $PORT
+- CORS and XSRF settings should be in [server] section only
+
 **Slow to wake up?**
 - Normal on free tier
 - Use UptimeRobot to ping every 14 min to keep awake
