@@ -1,0 +1,50 @@
+2025-11-18T18:46:53.803968739Z For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2025-11-18T18:46:53.81546248Z 2025-11-18 18:46:53.815 Please replace `use_container_width` with `width`.
+2025-11-18T18:46:53.815478861Z 
+2025-11-18T18:46:53.815484561Z `use_container_width` will be removed after 2025-12-31.
+2025-11-18T18:46:53.815488702Z 
+2025-11-18T18:46:53.815493922Z For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2025-11-18T18:46:53.913308846Z 2025-11-18 18:46:53.913 Please replace `use_container_width` with `width`.
+2025-11-18T18:46:53.913341878Z 
+2025-11-18T18:46:53.913346448Z `use_container_width` will be removed after 2025-12-31.
+2025-11-18T18:46:53.913348898Z 
+2025-11-18T18:46:53.913352019Z For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2025-11-18T18:50:51.119461873Z 2025-11-18 18:50:50.954 Uncaught exception GET /_stcore/stream (127.0.0.1)
+2025-11-18T18:50:51.119482654Z HTTPServerRequest(protocol='http', host='fake-logo-detection.onrender.com', method='GET', uri='/_stcore/stream', version='HTTP/1.1', remote_ip='127.0.0.1')
+2025-11-18T18:50:51.119488154Z Traceback (most recent call last):
+2025-11-18T18:50:51.119504015Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/tornado/websocket.py", line 965, in _accept_connection
+2025-11-18T18:50:51.119508056Z     open_result = handler.open(*handler.open_args, **handler.open_kwargs)
+2025-11-18T18:50:51.119512196Z                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-11-18T18:50:51.119517126Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/streamlit/web/server/browser_websocket_handler.py", line 198, in open
+2025-11-18T18:50:51.119522036Z     self._session_id = self._runtime.connect_session(
+2025-11-18T18:50:51.119526317Z                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-11-18T18:50:51.119530867Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/streamlit/runtime/runtime.py", line 405, in connect_session
+2025-11-18T18:50:51.119534977Z     session_id = self._session_mgr.connect_session(
+2025-11-18T18:50:51.119538687Z                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-11-18T18:50:51.119542237Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/streamlit/runtime/websocket_session_manager.py", line 99, in connect_session
+2025-11-18T18:50:51.119545758Z     self._session_storage.delete(existing_session.id)
+2025-11-18T18:50:51.119549488Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/streamlit/runtime/memory_session_storage.py", line 74, in delete
+2025-11-18T18:50:51.119553128Z     del self._cache[session_id]
+2025-11-18T18:50:51.119556648Z         ~~~~~~~~~~~^^^^^^^^^^^^
+2025-11-18T18:50:51.119560168Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/cachetools/__init__.py", line 470, in __delitem__
+2025-11-18T18:50:51.119564308Z     raise KeyError(key)
+2025-11-18T18:50:51.119567749Z KeyError: '8cf0f9cf-7ccd-4600-8c46-8c34310e56c4'
+2025-11-18T18:51:23.85207845Z 2025-11-18 18:51:23.851 Session with id 8cf0f9cf-7ccd-4600-8c46-8c34310e56c4 is already connected! Connecting to a new session.
+2025-11-18T18:56:29.903924955Z ==> Deploying...
+2025-11-18T18:58:14.409704278Z 2025-11-18 18:58:14.409 Session with id 8cf0f9cf-7ccd-4600-8c46-8c34310e56c4 is already connected! Connecting to a new session.
+2025-11-18T18:59:54.020809364Z ==> No open ports detected, continuing to scan...
+2025-11-18T18:59:54.219738797Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2025-11-18T18:59:57.628627044Z ==> Running 'streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true'
+2025-11-18T19:00:06.61307772Z 
+2025-11-18T19:00:06.613101211Z   You can now view your Streamlit app in your browser.
+2025-11-18T19:00:06.613120172Z 
+2025-11-18T19:00:06.613125002Z   URL: http://0.0.0.0:10000
+2025-11-18T19:00:06.613142172Z 
+2025-11-18T19:00:12.400127246Z ==> Your service is live 🎉
+2025-11-18T19:00:12.439777282Z ==> 
+2025-11-18T19:00:12.494762318Z ==> ///////////////////////////////////////////////////////////
+2025-11-18T19:00:12.533761795Z ==> 
+2025-11-18T19:00:12.574017311Z ==> Available at your primary URL https://fake-logo-detection.onrender.com
+2025-11-18T19:00:12.612486528Z ==> 
+2025-11-18T19:00:12.656272874Z ==> ///////////////////////////////////////////////////////////
+2025-11-18T19:01:10.76611836Z   Stopping...
