@@ -24,6 +24,8 @@ from src.explain import generate_gradcam_for_crop, explain_classification
 from src.similarity import SimilaritySearcher
 from src.db import DetectionDatabase
 from src.report import ReportGenerator
+from src.analytics import AnalyticsDashboard
+from src.logo_fetcher import OnlineLogoFetcher
 
 logger = get_logger(__name__)
 
@@ -68,9 +70,11 @@ def load_models(detection_method='sift'):
         similarity_searcher = SimilaritySearcher()
         db = DetectionDatabase()
         report_gen = ReportGenerator()
+        analytics_dashboard = AnalyticsDashboard()
+        logo_fetcher = OnlineLogoFetcher()
         
         logger.info("All models and components loaded")
-        return detector, classifier, similarity_searcher, db, report_gen
+        return detector, classifier, similarity_searcher, db, report_gen, analytics_dashboard, logo_fetcher
 
 
 def create_severity_gauge(severity_score, title="Severity Score"):
@@ -277,7 +281,7 @@ def main():
     st.markdown("---")
     
     # Load models
-    detector, classifier, similarity_searcher, db, report_gen = load_models()
+    detector, classifier, similarity_searcher, db, report_gen, analytics_dashboard, logo_fetcher = load_models()
     
     # Sidebar configuration
     st.sidebar.title("⚙️ Configuration")
@@ -317,6 +321,78 @@ def main():
     
     # Update detector method
     detector.method = 'sift' if detection_method == "SIFT Features" else 'template'
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🌐 Online Logo Fetcher")
+    st.sidebar.caption("Brandfetch API: 500K free requests/month")
+    
+    # API Key configuration
+    with st.sidebar.expander("⚙️ API Configuration (Optional)", expanded=False):
+        st.markdown("**Setup Instructions:**")
+        st.markdown("1. Sign up at [Brandfetch](https://brandfetch.com/developers)")
+        st.markdown("2. Get your API key from dashboard")
+        st.markdown("3. Enter it below or set BRANDFETCH_API_KEY env var")
+        
+        api_key_input = st.text_input(
+            "Brandfetch API Key (optional):",
+            type="password",
+            help="Leave empty to use unauthenticated mode (limited)"
+        )
+        
+        if api_key_input:
+            # Update logo fetcher with new API key
+            logo_fetcher.api_key = api_key_input
+            st.success("✅ API key configured")
+    
+    fetch_method = st.sidebar.radio(
+        "Fetch by:",
+        ["Domain", "Company Name"],
+        help="Fetch reference logos from Brandfetch API"
+    )
+    
+    fetch_input = st.sidebar.text_input(
+        "Enter domain or company name:",
+        placeholder="e.g., nike.com or Nike",
+        help="Will fetch logo from online sources"
+    )
+    
+    add_to_db = st.sidebar.checkbox(
+        "Add to Detection Database",
+        value=True,
+        help="Save fetched logo to templates for future detection"
+    )
+    
+    if st.sidebar.button("🔍 Fetch Logo", use_container_width=True):
+        if fetch_input:
+            with st.sidebar.spinner("Fetching logo..."):
+                if fetch_method == "Domain":
+                    logo_data = logo_fetcher.fetch_logo_by_domain(fetch_input)
+                else:
+                    logo_data = logo_fetcher.fetch_logo_by_name(fetch_input)
+                
+                if logo_data:
+                    st.sidebar.success(f"✅ Found logo for {logo_data['brand_name']}")
+                    if logo_data['logo_image'] is not None:
+                        st.sidebar.image(
+                            cv2.cvtColor(logo_data['logo_image'], cv2.COLOR_BGR2RGB),
+                            caption=logo_data['brand_name'],
+                            use_column_width=True
+                        )
+                        if logo_data['brand_colors']:
+                            st.sidebar.markdown(f"**Brand Colors:** {', '.join(logo_data['brand_colors'][:3])}")
+                        
+                        # Save to templates database if requested
+                        if add_to_db:
+                            saved_path = logo_fetcher.save_to_templates_db(logo_data)
+                            if saved_path:
+                                st.sidebar.success(f"💾 Saved to templates: {saved_path.name}")
+                                st.sidebar.info("🔄 Please restart the app to reload templates")
+                            else:
+                                st.sidebar.warning("⚠️ Could not save to templates database")
+                else:
+                    st.sidebar.error("❌ Logo not found. Try a different domain/name or check your API key.")
+        else:
+            st.sidebar.warning("Please enter a domain or company name")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📊 Statistics")
@@ -736,6 +812,51 @@ def main():
                                     st.image(cv2.cvtColor(sim_img, cv2.COLOR_BGR2RGB),
                                             caption=f"{sim['name']}\n{sim['similarity']:.2%}",
                                             use_container_width=True)
+            
+            # Analytics Dashboard Below Detection Results
+            st.markdown("---")
+            st.markdown("### 📊 Detailed Analytics Dashboard")
+            
+            # Compute comprehensive metrics
+            metrics = analytics_dashboard.compute_metrics(
+                result['detections'],
+                result.get('ela_result'),
+                result.get('exif_data'),
+                result.get('processing_time_ms', 0)
+            )
+            
+            if metrics.get('num_logos', 0) > 0:
+                # Summary table
+                st.markdown("#### 📈 Summary Statistics")
+                summary_table = analytics_dashboard.generate_summary_table(metrics)
+                st.dataframe(summary_table, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                
+                # Visualization charts
+                chart_row1_col1, chart_row1_col2 = st.columns(2)
+                
+                with chart_row1_col1:
+                    # Severity distribution
+                    severity_chart = analytics_dashboard.create_severity_distribution_chart(result['detections'])
+                    st.plotly_chart(severity_chart, use_container_width=True)
+                
+                with chart_row1_col2:
+                    # Component breakdown
+                    component_chart = analytics_dashboard.create_component_breakdown_chart(result['detections'])
+                    st.plotly_chart(component_chart, use_container_width=True)
+                
+                chart_row2_col1, chart_row2_col2 = st.columns(2)
+                
+                with chart_row2_col1:
+                    # Confidence scatter
+                    scatter_chart = analytics_dashboard.create_confidence_scatter(result['detections'])
+                    st.plotly_chart(scatter_chart, use_container_width=True)
+                
+                with chart_row2_col2:
+                    # Risk pie chart
+                    risk_chart = analytics_dashboard.create_risk_pie_chart(metrics)
+                    st.plotly_chart(risk_chart, use_container_width=True)
             
             # Generate PDF report
             st.markdown("---")

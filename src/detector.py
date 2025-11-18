@@ -120,8 +120,9 @@ class LogoDetector:
                 # Perform template matching
                 result = cv2.matchTemplate(gray, scaled_template, cv2.TM_CCOEFF_NORMED)
                 
-                # Find matches above threshold
-                locations = np.where(result >= threshold)
+                # Find matches above threshold (more lenient for template matching)
+                effective_threshold = max(0.4, threshold * 0.8)  # Lower threshold for better recall
+                locations = np.where(result >= effective_threshold)
                 
                 for pt in zip(*locations[::-1]):
                     confidence = result[pt[1], pt[0]]
@@ -173,11 +174,11 @@ class LogoDetector:
             for pair in matches:
                 if len(pair) == 2:
                     m, n = pair
-                    if m.distance < 0.75 * n.distance:  # Slightly more lenient
+                    if m.distance < 0.8 * n.distance:  # More lenient for real-world images
                         good_matches.append(m)
             
-            # Require minimum number of good matches (reduced from 10 to 6 for better detection)
-            if len(good_matches) >= 6:
+            # Require minimum number of good matches (reduced to 4 for real-world camera images)
+            if len(good_matches) >= 4:
                 # Extract matched keypoint locations
                 src_pts = np.float32([kp_template[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
                 dst_pts = np.float32([kp_image[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
@@ -202,9 +203,11 @@ class LogoDetector:
                         
                         # Confidence based on number of inliers (adjusted for better detection)
                         inliers = np.sum(mask)
-                        confidence = min(1.0, inliers / 15.0)  # Reduced from 30 to 15 for more realistic scores
+                        confidence = min(1.0, max(0.2, inliers / 10.0))  # Floor of 0.2 for valid detections
                         
-                        if confidence >= threshold and w > 0 and h > 0:
+                        # More lenient threshold for real-world images
+                        effective_threshold = max(0.2, threshold)
+                        if confidence >= effective_threshold and w > 0 and h > 0:
                             bbox = (x, y, w, h)
                             if not self._is_overlapping(bbox, detections):
                                 detections.append({
