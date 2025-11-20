@@ -396,10 +396,17 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📊 Statistics")
-    stats = db.get_statistics()
-    st.sidebar.metric("Total Detections", stats.get('total_detections', 0))
-    st.sidebar.metric("Total Logos Found", stats.get('total_logos', 0))
-    st.sidebar.metric("Fake Logos Detected", stats.get('total_fakes', 0))
+    try:
+        stats = db.get_statistics()
+        if stats:
+            st.sidebar.metric("Total Detections", stats.get('total_detections', 0))
+            st.sidebar.metric("Total Logos Found", stats.get('total_logos', 0))
+            st.sidebar.metric("Fake Logos Detected", stats.get('total_fakes', 0))
+        else:
+            st.sidebar.info("No statistics available yet")
+    except Exception as e:
+        st.sidebar.error(f"Error loading statistics: {str(e)}")
+        logger.error(f"Statistics error: {e}")
     
     # Main content tabs
     tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload & Analyze", "📊 Analytics Dashboard", "📚 Detection History", "ℹ️ About"])
@@ -590,7 +597,24 @@ def main():
                 )
             
             if not result['success']:
-                st.warning(result['message'])
+                st.warning(f"⚠️ {result['message']}")
+                st.info("💡 **Tips to improve detection:**")
+                st.markdown("""
+                1. **Adjust detection settings** (in sidebar):
+                   - Try lowering the **confidence threshold**
+                   - Switch between **SIFT**, **Template Matching**, or **YOLO** methods
+                
+                2. **Add the logo to database** (use Online Logo Fetcher in sidebar):
+                   - Enter brand name or domain (e.g., "starbucks.com" or "Starbucks")
+                   - Click "🔍 Fetch Logo"
+                   - Check "Add to Detection Database"
+                   - The logo will be available immediately!
+                
+                3. **Image quality**:
+                   - Ensure logo is clearly visible
+                   - Try uploading higher resolution image
+                   - Make sure logo isn't too small or heavily occluded
+                """)
                 return
             
             # Display results
@@ -817,46 +841,54 @@ def main():
             st.markdown("---")
             st.markdown("### 📊 Detailed Analytics Dashboard")
             
-            # Compute comprehensive metrics
-            metrics = analytics_dashboard.compute_metrics(
-                result['detections'],
-                result.get('ela_result'),
-                result.get('exif_data'),
-                result.get('processing_time_ms', 0)
-            )
-            
-            if metrics.get('num_logos', 0) > 0:
-                # Summary table
-                st.markdown("#### 📈 Summary Statistics")
-                summary_table = analytics_dashboard.generate_summary_table(metrics)
-                st.dataframe(summary_table, use_container_width=True, hide_index=True)
+            try:
+                # Compute comprehensive metrics
+                metrics = analytics_dashboard.compute_metrics(
+                    result['detections'],
+                    result.get('ela_result'),
+                    result.get('exif_data'),
+                    result.get('processing_time_ms', 0)
+                )
                 
-                st.markdown("---")
-                
-                # Visualization charts
-                chart_row1_col1, chart_row1_col2 = st.columns(2)
-                
-                with chart_row1_col1:
-                    # Severity distribution
-                    severity_chart = analytics_dashboard.create_severity_distribution_chart(result['detections'])
-                    st.plotly_chart(severity_chart, use_container_width=True)
-                
-                with chart_row1_col2:
-                    # Component breakdown
-                    component_chart = analytics_dashboard.create_component_breakdown_chart(result['detections'])
-                    st.plotly_chart(component_chart, use_container_width=True)
-                
-                chart_row2_col1, chart_row2_col2 = st.columns(2)
-                
-                with chart_row2_col1:
-                    # Confidence scatter
-                    scatter_chart = analytics_dashboard.create_confidence_scatter(result['detections'])
-                    st.plotly_chart(scatter_chart, use_container_width=True)
-                
-                with chart_row2_col2:
-                    # Risk pie chart
-                    risk_chart = analytics_dashboard.create_risk_pie_chart(metrics)
-                    st.plotly_chart(risk_chart, use_container_width=True)
+                if metrics.get('error'):
+                    st.error(f"Analytics error: {metrics.get('message', 'Unknown error')}")
+                elif metrics.get('num_logos', 0) > 0:
+                    # Summary table
+                    st.markdown("#### 📈 Summary Statistics")
+                    summary_table = analytics_dashboard.generate_summary_table(metrics)
+                    st.dataframe(summary_table, use_container_width=True, hide_index=True)
+                    
+                    st.markdown("---")
+                    
+                    # Visualization charts
+                    chart_row1_col1, chart_row1_col2 = st.columns(2)
+                    
+                    with chart_row1_col1:
+                        # Severity distribution
+                        severity_chart = analytics_dashboard.create_severity_distribution_chart(result['detections'])
+                        st.plotly_chart(severity_chart, use_container_width=True)
+                    
+                    with chart_row1_col2:
+                        # Component breakdown
+                        component_chart = analytics_dashboard.create_component_breakdown_chart(result['detections'])
+                        st.plotly_chart(component_chart, use_container_width=True)
+                    
+                    chart_row2_col1, chart_row2_col2 = st.columns(2)
+                    
+                    with chart_row2_col1:
+                        # Confidence scatter
+                        scatter_chart = analytics_dashboard.create_confidence_scatter(result['detections'])
+                        st.plotly_chart(scatter_chart, use_container_width=True)
+                    
+                    with chart_row2_col2:
+                        # Risk pie chart
+                        risk_chart = analytics_dashboard.create_risk_pie_chart(metrics)
+                        st.plotly_chart(risk_chart, use_container_width=True)
+                else:
+                    st.info("No detection data available for analytics.")
+            except Exception as e:
+                st.error(f"Failed to generate analytics: {str(e)}")
+                logger.error(f"Analytics dashboard error: {e}")
             
             # Generate PDF report
             st.markdown("---")
